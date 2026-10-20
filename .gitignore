@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+
+# Ubuntu personal files - do not upload
+/.bash_history
+/.bashrc
+/.profile
+/.gemini/
+/.local/
+/.npm/
+/.cache/
+/.ssh/
