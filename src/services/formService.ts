@@ -9,6 +9,7 @@ import {
   FormCollaborator
 } from '../types';
 import { INITIAL_FORMS, INITIAL_RESPONSES } from '../lib/mockData';
+import { generateUUID, isValidUUID } from '../utils/uuid';
 
 const STORAGE_KEY_FORMS = 'formflow_forms_v1';
 const STORAGE_KEY_RESPONSES = 'formflow_responses_v1';
@@ -64,7 +65,7 @@ export const formService = {
     if (isSupabaseConfigured() && supabase) {
       try {
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Supabase query timed out')), 4000)
+          setTimeout(() => reject(new Error('Supabase query timed out')), 5000)
         );
 
         let query = supabase
@@ -72,11 +73,11 @@ export const formService = {
           .select('*, questions(*), form_collaborators(*), profiles(id, email, full_name, avatar_url, role)');
 
         if (currentUser?.role === 'admin') {
-          // Admin can see all
+          // Admin can see all forms via RLS
         } else if (currentUser?.role === 'organizer') {
-          // Organizers see own forms or shared forms
+          // Organizers see own forms or shared forms (or public published) via RLS
         } else {
-          // General user / respondent
+          // General unauthenticated / respondent: only published public forms
           query = query.eq('status', 'published').eq('is_public', true);
         }
 
@@ -138,7 +139,7 @@ export const formService = {
           }));
         }
       } catch (err) {
-        console.warn('Supabase query failed or timed out, using starter forms:', err);
+        console.warn('Supabase query failed or returned no items, falling back to local store:', err);
       }
     }
 
@@ -170,10 +171,10 @@ export const formService = {
 
   // 2. Get Single Form by ID
   async getFormById(id: string): Promise<Form | null> {
-    if (isSupabaseConfigured() && supabase) {
+    if (isSupabaseConfigured() && supabase && isValidUUID(id)) {
       try {
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Form fetch timed out')), 4000)
+          setTimeout(() => reject(new Error('Form fetch timed out')), 5000)
         );
 
         const { data, error }: any = await Promise.race([
@@ -254,7 +255,7 @@ export const formService = {
 
   // 3. Create a new Form
   async createForm(formData: Partial<Form>, user: UserProfile): Promise<Form> {
-    const newFormId = 'form-' + Math.random().toString(36).substring(2, 9);
+    const newFormId = generateUUID();
     const now = new Date().toISOString();
 
     const newForm: Form = {
@@ -277,7 +278,7 @@ export const formService = {
       },
       questions: formData.questions || [
         {
-          id: 'q-' + Math.random().toString(36).substring(2, 7),
+          id: generateUUID(),
           formId: newFormId,
           title: 'Question 1',
           type: 'short_answer',
@@ -294,13 +295,15 @@ export const formService = {
 
     if (isSupabaseConfigured() && supabase) {
       try {
+        const createdByUUID = isValidUUID(user.id) ? user.id : undefined;
+
         const { data, error } = await supabase
           .from('forms')
           .insert({
             id: newForm.id,
             title: newForm.title,
             description: newForm.description,
-            created_by: user.id,
+            created_by: createdByUUID,
             status: newForm.status,
             is_public: newForm.settings.isPublic,
             requires_login: newForm.settings.requiresLogin,
@@ -317,10 +320,10 @@ export const formService = {
 
         if (error) throw error;
 
-        // Insert initial questions
+        // Insert initial questions with UUIDs
         if (newForm.questions && newForm.questions.length > 0) {
           const qInserts = newForm.questions.map((q, idx) => ({
-            id: q.id,
+            id: isValidUUID(q.id) ? q.id : generateUUID(),
             form_id: newForm.id,
             title: q.title,
             description: q.description || '',
@@ -362,7 +365,7 @@ export const formService = {
       updatedAt: new Date().toISOString()
     };
 
-    if (isSupabaseConfigured() && supabase) {
+    if (isSupabaseConfigured() && supabase && isValidUUID(id)) {
       try {
         await supabase
           .from('forms')
@@ -389,7 +392,7 @@ export const formService = {
           await supabase.from('questions').delete().eq('form_id', id);
           if (updates.questions.length > 0) {
             const qInserts = updates.questions.map((q, idx) => ({
-              id: q.id,
+              id: isValidUUID(q.id) ? q.id : generateUUID(),
               form_id: id,
               title: q.title,
               description: q.description || '',
@@ -420,10 +423,10 @@ export const formService = {
     const source = await this.getFormById(id);
     if (!source) throw new Error('Source form not found');
 
-    const newId = 'form-' + Math.random().toString(36).substring(2, 9);
+    const newId = generateUUID();
     const duplicatedQuestions = (source.questions || []).map((q, i) => ({
       ...q,
-      id: 'q-' + Math.random().toString(36).substring(2, 8),
+      id: generateUUID(),
       formId: newId,
       orderIndex: i
     }));
@@ -442,7 +445,7 @@ export const formService = {
 
   // 6. Delete Form
   async deleteForm(id: string): Promise<boolean> {
-    if (isSupabaseConfigured() && supabase) {
+    if (isSupabaseConfigured() && supabase && isValidUUID(id)) {
       try {
         await supabase.from('forms').delete().eq('id', id);
       } catch (err) {
@@ -496,13 +499,13 @@ export const formService = {
       }
     }
 
-    const responseId = 'resp-' + Math.random().toString(36).substring(2, 9);
+    const responseId = generateUUID();
     const now = new Date().toISOString();
 
     const newResponse: FormResponse = {
       id: responseId,
       formId,
-      respondentId: user?.id || null,
+      respondentId: user?.id && isValidUUID(user.id) ? user.id : null,
       respondentEmail: respondentEmail || null,
       submittedAt: now,
       answers,
@@ -511,7 +514,7 @@ export const formService = {
       checkedInAt: null
     };
 
-    if (isSupabaseConfigured() && supabase) {
+    if (isSupabaseConfigured() && supabase && isValidUUID(formId)) {
       try {
         const { data: respData, error: respErr } = await supabase
           .from('responses')
@@ -529,8 +532,9 @@ export const formService = {
 
         // Insert answers
         const answerEntries = Object.entries(answers).map(([qId, val]) => ({
+          id: generateUUID(),
           response_id: newResponse.id,
-          question_id: qId,
+          question_id: isValidUUID(qId) ? qId : generateUUID(),
           value: val
         }));
 
@@ -541,6 +545,7 @@ export const formService = {
         // Insert event registration if event
         if (form.settings.isEvent && participantInfo?.name && respondentEmail) {
           await supabase.from('event_registrations').insert({
+            id: generateUUID(),
             form_id: formId,
             response_id: newResponse.id,
             participant_name: participantInfo.name,
@@ -562,7 +567,7 @@ export const formService = {
 
   // 8. Get Responses for Form
   async getFormResponses(formId: string): Promise<FormResponse[]> {
-    if (isSupabaseConfigured() && supabase) {
+    if (isSupabaseConfigured() && supabase && isValidUUID(formId)) {
       try {
         const { data, error } = await supabase
           .from('responses')
@@ -572,26 +577,28 @@ export const formService = {
 
         if (error) throw error;
 
-        return (data || []).map((row: any) => {
-          const ansMap: Record<string, any> = {};
-          (row.answers || []).forEach((a: any) => {
-            ansMap[a.question_id] = a.value;
+        if (data && data.length > 0) {
+          return data.map((row: any) => {
+            const ansMap: Record<string, any> = {};
+            (row.answers || []).forEach((a: any) => {
+              ansMap[a.question_id] = a.value;
+            });
+
+            const reg = row.event_registrations?.[0];
+
+            return {
+              id: row.id,
+              formId: row.form_id,
+              respondentId: row.respondent_id,
+              respondentEmail: row.respondent_email,
+              submittedAt: row.submitted_at,
+              answers: ansMap,
+              participantName: reg?.participant_name || 'Participant',
+              registrationStatus: reg?.status || 'confirmed',
+              checkedInAt: reg?.checked_in_at || null
+            };
           });
-
-          const reg = row.event_registrations?.[0];
-
-          return {
-            id: row.id,
-            formId: row.form_id,
-            respondentId: row.respondent_id,
-            respondentEmail: row.respondent_email,
-            submittedAt: row.submitted_at,
-            answers: ansMap,
-            participantName: reg?.participant_name || 'Participant',
-            registrationStatus: reg?.status || 'confirmed',
-            checkedInAt: reg?.checked_in_at || null
-          };
-        });
+        }
       } catch (err) {
         console.warn('Supabase fetch responses failed, reading local:', err);
       }
@@ -609,7 +616,7 @@ export const formService = {
   ): Promise<boolean> {
     const now = status === 'attended' ? new Date().toISOString() : null;
 
-    if (isSupabaseConfigured() && supabase) {
+    if (isSupabaseConfigured() && supabase && isValidUUID(responseId)) {
       try {
         await supabase
           .from('event_registrations')
@@ -647,18 +654,51 @@ export const formService = {
     const form = await this.getFormById(formId);
     if (!form) throw new Error('Form not found');
 
+    const cleanEmail = userEmail.trim().toLowerCase();
+
+    // Check existing collaborators
+    const existingCollabs = form.collaborators || [];
+    if (existingCollabs.some(c => c.userEmail.toLowerCase() === cleanEmail)) {
+      throw new Error('This user is already a collaborator on this form.');
+    }
+
+    let linkedUserId = generateUUID();
+
+    if (isSupabaseConfigured() && supabase && isValidUUID(formId)) {
+      // Look up existing profile in Supabase
+      const { data: profile, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (profile) {
+        linkedUserId = profile.id;
+        const { error: insErr } = await supabase
+          .from('form_collaborators')
+          .insert({
+            id: generateUUID(),
+            form_id: formId,
+            user_id: profile.id,
+            role
+          });
+
+        if (insErr) {
+          console.warn('Supabase collaborator insert warning:', insErr);
+        }
+      } else {
+        // If profile doesn't exist yet, we still record locally
+        console.info(`Organizer profile for ${cleanEmail} not found in database yet; will link upon account registration.`);
+      }
+    }
+
     const newCollab: FormCollaborator = {
-      id: 'collab-' + Math.random().toString(36).substring(2, 7),
+      id: generateUUID(),
       formId,
-      userId: 'user-ext-' + Math.random().toString(36).substring(2, 6),
-      userEmail,
+      userId: linkedUserId,
+      userEmail: cleanEmail,
       role
     };
-
-    const existingCollabs = form.collaborators || [];
-    if (existingCollabs.some(c => c.userEmail.toLowerCase() === userEmail.toLowerCase())) {
-      throw new Error('User is already a collaborator on this form.');
-    }
 
     const updatedCollabs = [...existingCollabs, newCollab];
     await this.updateForm(formId, { collaborators: updatedCollabs });
@@ -668,11 +708,105 @@ export const formService = {
 
   // 11. Remove Form Collaborator
   async removeCollaborator(formId: string, collaboratorId: string): Promise<boolean> {
+    if (isSupabaseConfigured() && supabase && isValidUUID(collaboratorId)) {
+      try {
+        await supabase.from('form_collaborators').delete().eq('id', collaboratorId);
+      } catch (err) {
+        console.warn('Supabase remove collaborator warning:', err);
+      }
+    }
+
     const form = await this.getFormById(formId);
     if (!form) return false;
 
     const updatedCollabs = (form.collaborators || []).filter(c => c.id !== collaboratorId);
     await this.updateForm(formId, { collaborators: updatedCollabs });
     return true;
+  },
+
+  // 12. Seed / Sync Starter Forms to Supabase
+  // Preserves existing forms and populates starter hackathon/seminar forms with valid UUIDs
+  async seedStarterFormsToSupabase(user: UserProfile): Promise<{ success: boolean; count: number; message: string }> {
+    if (!isSupabaseConfigured() || !supabase) {
+      return { success: false, count: 0, message: 'Supabase is not configured' };
+    }
+
+    try {
+      // 1. Check if Supabase already has forms
+      const { data: existingForms, error: countErr } = await supabase
+        .from('forms')
+        .select('id')
+        .limit(1);
+
+      if (countErr) throw countErr;
+
+      if (existingForms && existingForms.length > 0) {
+        return {
+          success: true,
+          count: existingForms.length,
+          message: 'Database already contains active forms. Existing database forms preserved.'
+        };
+      }
+
+      // 2. Prepare starter forms with UUIDs
+      let insertedCount = 0;
+      for (const starter of INITIAL_FORMS) {
+        const formUUID = generateUUID();
+        const { error: formErr } = await supabase.from('forms').insert({
+          id: formUUID,
+          title: starter.title,
+          description: starter.description,
+          created_by: isValidUUID(user.id) ? user.id : undefined,
+          status: starter.status,
+          is_public: starter.settings.isPublic,
+          requires_login: starter.settings.requiresLogin,
+          allow_multiple_responses: starter.settings.allowMultipleResponses,
+          response_limit: starter.settings.responseLimit,
+          deadline: starter.settings.deadline,
+          is_event: starter.settings.isEvent,
+          event_date: starter.settings.eventDate,
+          event_venue: starter.settings.eventVenue,
+          event_capacity: starter.settings.eventCapacity
+        });
+
+        if (formErr) {
+          console.warn('Seed form error:', formErr);
+          continue;
+        }
+
+        // Insert questions
+        if (starter.questions && starter.questions.length > 0) {
+          const qInserts = starter.questions.map((q, idx) => ({
+            id: generateUUID(),
+            form_id: formUUID,
+            title: q.title,
+            description: q.description || '',
+            type: q.type,
+            required: q.required,
+            order_index: idx,
+            options: q.options || [],
+            scale_min: q.scaleMin,
+            scale_max: q.scaleMax,
+            scale_min_label: q.scaleMinLabel,
+            scale_max_label: q.scaleMaxLabel
+          }));
+          await supabase.from('questions').insert(qInserts);
+        }
+
+        insertedCount++;
+      }
+
+      return {
+        success: true,
+        count: insertedCount,
+        message: `Successfully seeded ${insertedCount} starter forms to Supabase database.`
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        count: 0,
+        message: err?.message || 'Failed to seed forms to Supabase'
+      };
+    }
   }
 };

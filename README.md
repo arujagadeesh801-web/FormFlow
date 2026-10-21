@@ -94,24 +94,30 @@ npm run build
 
 ---
 
-## 🗄️ Supabase Setup & SQL Migrations
+## 🗄️ Supabase Setup & Security Architecture
 
-FormFlow runs out of the box in zero-config local mode. When you are ready to link your remote Supabase cloud project:
+FormFlow is connected to Supabase with airtight PostgreSQL Row Level Security (RLS) policies and Role-Based Access Control (RBAC):
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Go to the **SQL Editor** tab in your Supabase Dashboard.
-3. Open [`supabase/schema.sql`](file:///root/supabase/schema.sql) and paste the entire script into the SQL Editor, then click **Run**.
-   - This sets up all 7 tables (`profiles`, `forms`, `questions`, `form_collaborators`, `responses`, `answers`, `event_registrations`).
-   - Enables Row Level Security (RLS) on every table.
-   - Creates helper functions `is_admin()` and `can_manage_form()`.
-   - Creates automated triggers for user creation and updated timestamps.
-4. Copy your **Project URL** and **Anon Public Key** from **Project Settings > API**.
-5. Update your `.env` file in the root folder:
-   ```env
-   VITE_SUPABASE_URL=https://your-project.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-public-key
+### Primary Administrator
+- **Designated Admin Account**: `arujagadeesh801@gmail.com`
+- **Security Rule**: The `admin` role is **never** granted directly by client requests. Instead, it is provisioned through a trusted database/server-side trigger (`handle_user_verification` / `handle_new_user`) only after the email address is verified in Supabase Auth.
+- **Organizer Role**: All other user registrations automatically receive the `organizer` role, granting them permission to create and manage their own forms and invited collaborations.
+
+### Manual Supabase Setup Checklist Before Making Changes:
+1. **Email Confirmation Setting**:
+   - Navigate to Supabase Dashboard > **Authentication** > **Providers** > **Email**.
+   - If "Confirm email" is **ON**, register `arujagadeesh801@gmail.com` and click the verification link sent to your inbox to activate Admin status.
+   - If "Confirm email" is **OFF**, the database trigger immediately assigns `admin` upon registration.
+2. **Apply Database Migration**:
+   - Open Supabase Dashboard > **SQL Editor**.
+   - Run [`supabase/migrations/002_secure_admin_and_rls.sql`](file:///root/supabase/migrations/002_secure_admin_and_rls.sql).
+   - This migration is non-destructive and idempotent: it preserves all existing forms, questions, responses, and registrations.
+3. **Manual Promotion Helper** (if account existed prior to trigger):
+   ```sql
+   SELECT public.promote_designated_admin('arujagadeesh801@gmail.com');
    ```
-6. Restart Vite or run `npm run build`. FormFlow will automatically detect the credentials and switch to live Supabase queries!
+4. **Environment Variables**:
+   - In `/root/.env`, verify `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set.
 
 ---
 

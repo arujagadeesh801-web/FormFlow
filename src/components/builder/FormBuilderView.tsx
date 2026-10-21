@@ -20,6 +20,7 @@ import { QuestionEditor } from './QuestionEditor';
 import { CollaboratorModal } from './CollaboratorModal';
 import { formService } from '../../services/formService';
 import { useToast } from '../../context/ToastContext';
+import { generateUUID } from '../../utils/uuid';
 
 interface FormBuilderViewProps {
   form: Form;
@@ -82,7 +83,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({
   // Question operations
   const handleAddQuestion = (type: QuestionType = 'short_answer') => {
     const newQ: Question = {
-      id: 'q-' + Math.random().toString(36).substring(2, 7),
+      id: generateUUID(),
       formId: form.id,
       title: 'Untitled Question',
       type,
@@ -108,7 +109,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({
     const qToCopy = (form.questions || [])[index];
     const duplicated: Question = {
       ...qToCopy,
-      id: 'q-' + Math.random().toString(36).substring(2, 7),
+      id: generateUUID(),
       title: `${qToCopy.title} (Copy)`,
       orderIndex: index + 1
     };

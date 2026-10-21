@@ -16,11 +16,16 @@ import {
   Globe,
   MoreVertical,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Database,
+  UploadCloud,
+  RefreshCw,
+  ShieldCheck
 } from 'lucide-react';
 import { Form, UserProfile } from '../../types';
 import { formService } from '../../services/formService';
 import { useToast } from '../../context/ToastContext';
+import { isSupabaseConfigured } from '../../lib/supabase';
 
 interface DashboardViewProps {
   forms: Form[];
@@ -45,6 +50,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'published' | 'draft' | 'closed' | 'events'>('all');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+
+  const handleSeedStarterForms = async () => {
+    if (!currentUser) return;
+    setSeeding(true);
+    try {
+      const res = await formService.seedStarterFormsToSupabase(currentUser);
+      if (res.success) {
+        showToast(res.message, 'success');
+        onRefreshForms();
+      } else {
+        showToast(res.message, 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to sync starter forms', 'error');
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   // Stats calculation
   const totalSubmissions = useMemo(() => {
@@ -117,13 +141,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {currentUser && (
-          <button
-            onClick={onOpenNewFormModal}
-            className="self-start sm:self-auto flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm rounded-lg shadow-sm transition active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create New Form</span>
-          </button>
+          <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+            {currentUser.role === 'admin' && isSupabaseConfigured() && (
+              <button
+                onClick={handleSeedStarterForms}
+                disabled={seeding}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-semibold text-xs rounded-lg shadow-xs transition disabled:opacity-50"
+                title="Preserves existing database forms while ensuring default university starter forms exist"
+              >
+                <UploadCloud className={`w-3.5 h-3.5 text-teal-600 ${seeding ? 'animate-bounce' : ''}`} />
+                <span>{seeding ? 'Syncing...' : 'Sync Starter Forms to DB'}</span>
+              </button>
+            )}
+
+            <button
+              onClick={onOpenNewFormModal}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm rounded-lg shadow-sm transition active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New Form</span>
+            </button>
+          </div>
         )}
       </div>
 

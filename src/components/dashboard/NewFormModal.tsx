@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { formService } from '../../services/formService';
 import { Form } from '../../types';
+import { generateUUID } from '../../utils/uuid';
 
 interface NewFormModalProps {
   isOpen: boolean;
@@ -51,7 +52,7 @@ export const NewFormModal: React.FC<NewFormModalProps> = ({
           questions: isEvent
             ? [
                 {
-                  id: 'q-' + Math.random().toString(36).substring(2, 7),
+                  id: generateUUID(),
                   formId: '',
                   title: 'Full Name',
                   type: 'short_answer',
@@ -60,7 +61,7 @@ export const NewFormModal: React.FC<NewFormModalProps> = ({
                   options: []
                 },
                 {
-                  id: 'q-' + Math.random().toString(36).substring(2, 7),
+                  id: generateUUID(),
                   formId: '',
                   title: 'Email Address',
                   type: 'short_answer',
@@ -69,7 +70,7 @@ export const NewFormModal: React.FC<NewFormModalProps> = ({
                   options: []
                 },
                 {
-                  id: 'q-' + Math.random().toString(36).substring(2, 7),
+                  id: generateUUID(),
                   formId: '',
                   title: 'Attendance Mode',
                   type: 'multiple_choice',
@@ -80,7 +81,7 @@ export const NewFormModal: React.FC<NewFormModalProps> = ({
               ]
             : [
                 {
-                  id: 'q-' + Math.random().toString(36).substring(2, 7),
+                  id: generateUUID(),
                   formId: '',
                   title: 'Untitled Question',
                   type: 'short_answer',

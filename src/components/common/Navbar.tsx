@@ -9,9 +9,11 @@ import {
   Database,
   CheckCircle,
   HelpCircle,
-  ChevronDown
+  ChevronDown,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, DESIGNATED_ADMIN_EMAIL } from '../../context/AuthContext';
 import { UserProfile } from '../../types';
 
 interface NavbarProps {
@@ -29,8 +31,26 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuthModal,
   onOpenConfigGuide
 }) => {
-  const { user, signOut, isSupabaseLive, switchDemoUser, availableDemoUsers } = useAuth();
+  const {
+    user,
+    signOut,
+    isSupabaseLive,
+    isRealSession,
+    refreshUser,
+    switchDemoUser,
+    availableDemoUsers
+  } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefreshProfile = async () => {
+    setRefreshing(true);
+    try {
+      await refreshUser();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
@@ -138,14 +158,40 @@ export const Navbar: React.FC<NavbarProps> = ({
                   onMouseLeave={() => setShowUserMenu(false)}
                 >
                   <div className="px-4 py-2 border-b border-slate-100">
-                    <p className="text-sm font-bold text-slate-900">{user.fullName}</p>
-                    <p className="text-xs text-slate-500 truncate">{user.email}</p>
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
-                      <span className="text-xs font-semibold text-teal-700 uppercase tracking-wide">
-                        Role: {user.role}
-                      </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-bold text-slate-900 truncate">{user.fullName}</p>
+                      {isRealSession && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          Live Auth
+                        </span>
+                      )}
                     </div>
+                    <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                    <div className="mt-1 flex items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
+                        <span className="text-xs font-semibold text-teal-700 uppercase tracking-wide">
+                          Role: {user.role}
+                        </span>
+                      </div>
+                      {isRealSession && (
+                        <button
+                          onClick={handleRefreshProfile}
+                          disabled={refreshing}
+                          className="text-[10px] text-slate-400 hover:text-teal-700 flex items-center gap-0.5 transition"
+                          title="Refresh role from Supabase database"
+                        >
+                          <RefreshCw className={`w-2.5 h-2.5 ${refreshing ? 'animate-spin' : ''}`} />
+                          <span>Sync</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {user.email.toLowerCase() === DESIGNATED_ADMIN_EMAIL.toLowerCase() && (
+                      <div className="mt-1.5 px-2 py-1 bg-teal-50 border border-teal-200 rounded text-[10px] text-teal-800 font-medium">
+                        ⭐ Designated Primary Administrator
+                      </div>
+                    )}
                   </div>
 
                   {/* Switch Role / Persona for quick testing */}
